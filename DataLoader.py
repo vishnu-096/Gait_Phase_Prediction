@@ -44,7 +44,7 @@ class DataLoader():
             source_table.info()
             source_table.describe().T
 
-            data_x = source_table.drop(["perc", "X", "Y","l_grf","r_grf"], axis = 1)
+            data_x = source_table.drop(["perc", "X", "Y","n_lgrf","n_rgrf"], axis = 1)
             target = source_table[["X", "Y"]]
             # target = source_table[["perc"]]
 
@@ -82,7 +82,7 @@ class DataLoader():
         source_table.info()
         source_table.describe().T
 
-        data_x = source_table.drop(["perc", "X", "Y","l_grf","r_grf"], axis = 1)
+        data_x = source_table.drop(["perc", "X", "Y","lgrf","r_grf"], axis = 1)
         target = source_table[["X","Y"]]
         print("heklkkioi")
         data_x.info()
@@ -111,7 +111,7 @@ class DataLoader():
         return np.array(dataX), np.array(dataY)
 
 
-    def GetTrainTestData(self, path="/home/vtp/masters_proj/GaitPhase/Subject_data/best_xls", multi_dat=True):
+    def GetTrainTestData(self, path="/home/vtp/Gait_Phase_Prediction/Subject_data/best_xls", multi_dat=True):
 
         self.path=path
         file_name=['MS_1.xlsx', 'MS_2.xlsx']
@@ -126,10 +126,12 @@ class DataLoader():
             print("X data",self.train_x.shape)
             print("Y data",self.train_y.shape)
         else:
-            path='/home/vtp/masters_proj/GaitPhase/Subject_data/best_xls/'
+            path='/home/vtp/Gait_Phase_Prediction/Subject_data/best_xls/'
+            path='/home/vtp/Gait_Phase_Prediction/Subject_data/inclined_data/'
+
             self.path=path
             # file_name=['MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
-            file_name=['TH_11.xlsx']
+            file_name=['SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx','SD_2.xlsx','SD_1.xlsx', 'SD_3.xlsx', 'MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
             test_file='SOE_1fin3.xlsx'
             data_x,data_y= self.shuffle_multiple_datasets_based_on_gait_cycle( file_name, path, test_file)
             X_train, X_test,y_train, y_test = train_test_split(data_x, data_y ,
@@ -142,6 +144,8 @@ class DataLoader():
             self.validation_x, self.validation_y = self.convert_data(X_test, y_test, look_back, fore_cast)
             print("X data",self.train_x.shape)
             print("Y data",self.train_y.shape)
+            print("Validation X data",self.validation_x.shape)
+            print("Validation Y data",self.validation_y.shape)
             
 
     def shuffle_multiple_datasets_based_on_gait_cycle(self, file_names, path_name, test_file_name):
@@ -153,7 +157,8 @@ class DataLoader():
         test_target=[]
 
         file_iter=0
-        for f_name in zip(file_names,test_file_name):
+        
+        for f_name in file_names:
         
             name=path_name+f_name
             print(name)
@@ -162,24 +167,28 @@ class DataLoader():
             source_table.keys()
             source_table
             x = source_table
-            # x = x.drop(['perc'], axis=1)
+            # x = x.drop(['perc_new'], axis=1)
             scaler = MinMaxScaler()
             x_scaled = scaler.fit_transform(x)
             x_scaled = pd.DataFrame(x_scaled)
 
-            self.encode_gait_percentage(source_table, "perc")
+            self.encode_gait_percentage(source_table, "perc_new")
             y = source_table[["X","Y"]] 
             source_table.info()
             source_table.describe().T
 
-            data_x = source_table.drop(["perc", "X", "Y","l_grf","r_grf"], axis = 1)
+            data_x = source_table.drop(["perc_new", "X", "Y","n_lgrf","n_rgrf","l_ph_ank","r_ph_ank"], axis = 1)
             target = source_table[["X", "Y"]]
-            target_perc=source_table[["perc"]]
+            target_perc=source_table[["perc_new"]]
             data_x.info()
             target.info()
 
             scaler = MinMaxScaler()
             data = scaler.fit_transform(data_x)
+            t_data.append(data)
+            t_target.append(target.values)
+            t_perc.append(target_perc.values)
+
             # ratio = 0.8
             # training_cutoff = math.floor(ratio * len(source_table))
 

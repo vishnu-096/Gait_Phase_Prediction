@@ -47,9 +47,9 @@ lr_patience = 8
 lr_threshold = 0.01
 lr_min_rate = 1e-6
 
-path="/home/vtp/masters_proj/GaitPhase"
+path="/home/vtp/Gait_Phase_Prediction/"
 
-result_path= "/home/vtp/masters_proj/GaitPhase/Results"
+result_path= "/home/vtp/Gait_Phase_Prediction/Results"
 
 #Learning rate scheduler
 def step_decay(epoch):
@@ -134,7 +134,7 @@ class model:
         print(self.data.train_x[0:100,:])
 
 
-    def train_model(self, model_num=1):
+    def train_model(self, model_num=1, num=0):
 
         self.model_num=model_num
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -198,8 +198,8 @@ class model:
                 activation='relu', padding='same'))            
             model3.add(AveragePooling1D(pool_size=3))
 
-            model3.add(LSTM(64, return_sequences=True))
             model3.add(LSTM(16, return_sequences=True))
+            model3.add(LSTM(8, return_sequences=True))
             # model1.add(LSTM(8))
             # model1.add(TimeDistributed(Dense(50, activation='relu')))
             # model1.add(TimeDistributed(Dense(2)))
@@ -234,12 +234,12 @@ class model:
         print("X shape",self.data.train_x.shape)
         print("Y shape",self.data.train_y.shape)
 
-        history = self.model.fit(self.data.train_x, self.data.train_y, epochs=self.epochs, batch_size=self.batch_size, callbacks=monitor,verbose=1, validation_split=0.2)   
+        history = self.model.fit(self.data.train_x, self.data.train_y, epochs=self.epochs, batch_size=self.batch_size, callbacks=monitor,verbose=1)   
 
-        self.model.save(self.model_save_path+"CNN_LSTM_"+str(model_num)+"_"+str(3))
+        self.model.save(self.model_save_path+"CNN_LSTM_"+str(model_num)+"_inclined_ph_cop_all_sub_k_fold"+str(4)+str(num))
 
 
-    def test_model(self, load_model=False):
+    def test_model(self, load_model=False, st="default"):
         if load_model:
             self.model=tf.keras.models.load_model(self.model_save_path+"CNN_LSTM_"+ str(self.model_num)+"_"+str(3))
 
@@ -273,29 +273,8 @@ class model:
             y =self.data.validation_y[iter][1]
             actual[iter] = ((math.atan2(y,x) + 2*math.pi) % (2*math.pi)) * (100 / (2*math.pi))
 
-
-        fig=plt.figure(figsize=(35,15))
-
-        # plt.plot(actual2[:],'-',label='Actual', linewidth = 3)
-        # plt.plot(predict[:],'.-',label='prediction', linewidth = 2)
-
-
-
-        plt.plot(actual[50:2556],'.',label='Actual')
-        plt.plot(pred[50:2556],'.',label='prediction')
-
-        plt.legend()
-        plt.title('LSTM Prediction - Full Data')
-        #plt.title('Right Foot')
-        #plt.ylabel('Angle')
-        #plt.xlabel('Gait Cycle Percentage')
-        plt.xlabel('Data Point')
-        plt.ylabel('Percentage (%)')
-        plt.savefig(result_path+"/gait_cycle_res"+str(self.model_num)+"3.png")
-
-
         error_thresh_list=[1, 2, 3, 4, 5]
-
+        accuracy_res=[]
         for err_thresh in error_thresh_list:
             correct=0
             for iter in range(len(actual)):
@@ -305,6 +284,30 @@ class model:
                 if (abs(actual[iter] - pred[iter]) <= err_thresh):
                             correct+=1
             print("Error Threshold ", err_thresh, "%   Precision: ", correct * 100/len(actual))
+            accuracy_res.append(correct * 100/len(actual))
+
+        # fig=plt.figure(figsize=(35,15))
+
+        # # plt.plot(actual2[:],'-',label='Actual', linewidth = 3)
+        # # plt.plot(predict[:],'.-',label='prediction', linewidth = 2)
+
+
+
+        # plt.plot(actual[50:2556],'.',label='Actual')
+        # plt.plot(pred[50:2556],'.',label='prediction')
+
+        # plt.legend()
+        # plt.title('LSTM Prediction - Full Data')
+        # #plt.title('Right Foot')
+        # #plt.ylabel('Angle')
+        # #plt.xlabel('Gait Cycle Percentage')
+        # plt.xlabel('Data Point')
+        # plt.ylabel('Percentage (%)')
+        # plt.savefig(result_path+"/gait_cycle_res_"+str(self.model_num)+st+"inclined.png")
+
+
+        return trainScore, testScore, accuracy_res
+
 
 # train_cnnlstm=model()
 # train_cnnlstm.load_dataset()
