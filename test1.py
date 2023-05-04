@@ -10,7 +10,7 @@ train_cnnlstm=model(4)
 # train_cnnlstm.train_model(4)
 # train_cnnlstm.test_model(False)
 
-# train_cnnlstm=model(4)
+# train_cnnlstm=model(4)s
 # train_cnnlstm.pop_data(True)
 # train_cnnlstm.test_model(True)
 
@@ -22,7 +22,7 @@ def k_fold_cross_validation(k):
     #'SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx'
     # file_name=['MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
     file_name=['SD_2.xlsx','SD_1.xlsx', 'SD_3.xlsx', 'MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
-    inclined_files = ['SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx', 'SKS_0_I.xlsx',  'SKS_2_I.xlsx',  'SKS_3_I.xlsx',  'SKS_4_I.xlsx',  'SKS_5_I.xlsx']
+    inclined_files = ['SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx', 'SKS_0_I.xlsx',  'SKS_2_I.xlsx',  'SKS_3_I.xlsx',  'SKS_4_I.xlsx', 'PK_3_I.xlsx', 'PK_5_2_I.xlsx', 'SKS_5_I.xlsx', 'PK_0_I.xlsx', 'PK_2_I.xlsx']
     if only_inclined:
         file_name = inclined_files
     else:
@@ -43,7 +43,7 @@ def k_fold_cross_validation(k):
     accuracy = []
     iter=0
     mean_acc=[]
-    with open(path+'all_data_results_3.txt', 'w') as f:
+    with open(path+'all_final_data_results_3_without_grf.txt', 'w') as f:
         for train_index, test_index in kf.split(data_x):
         # Split data into training and validation sets for this fold
             X_train_fold, y_train_fold = train_cnnlstm.data.convert_data(data_x[train_index], data_y[train_index], 10, 1)
@@ -53,7 +53,7 @@ def k_fold_cross_validation(k):
             train_cnnlstm.data.train_y =y_train_fold
             train_cnnlstm.data.validation_y = y_val_fold
             train_cnnlstm.train_model(3, iter)
-            train,test,acc=train_cnnlstm.test_model(False, "3_all_data"+str(iter))
+            train,test,acc=train_cnnlstm.test_model(False, "3_all_data_final_"+str(iter))
 
             iter+=1
 
@@ -62,7 +62,7 @@ def k_fold_cross_validation(k):
             # accuracy.append(acc)
             iter_acc=0
             for el in acc:
-                if mean_acc:
+                if iter==1:
                     mean_acc.append(el)
                 else:
                     mean_acc[iter_acc]+=el
@@ -75,8 +75,8 @@ def k_fold_cross_validation(k):
             f.write(str(el/k)+'  ')
 
 
-
-k_fold_cross_validation(4)
+ 
+k_fold_cross_validation(5)
 print("done!")
 
 
