@@ -2,13 +2,13 @@ from CNN_LSTM import *
 from DataLoader import *
 from sklearn.model_selection import KFold
 
-only_inclined =False
+only_inclined =True
 
 train_cnnlstm=model(4)
-# train_cnnlstm.pop_data(True)
-# # train_cnnlstm.load_dataset()
-# train_cnnlstm.train_model(4)
-# train_cnnlstm.test_model(False)
+train_cnnlstm.pop_data(True)
+# train_cnnlstm.load_dataset()
+train_cnnlstm.train_model(3)
+train_cnnlstm.test_model(False)
 
 # train_cnnlstm=model(4)s
 # train_cnnlstm.pop_data(True)
@@ -43,7 +43,7 @@ def k_fold_cross_validation(k):
     accuracy = []
     iter=0
     mean_acc=[]
-    with open(path+'all_final_data_results_3_without_grf.txt', 'w') as f:
+    with open(path+'all_inclined_data_results_3_cop_hip.txt', 'w') as f:
         for train_index, test_index in kf.split(data_x):
         # Split data into training and validation sets for this fold
             X_train_fold, y_train_fold = train_cnnlstm.data.convert_data(data_x[train_index], data_y[train_index], 10, 1)
@@ -53,7 +53,7 @@ def k_fold_cross_validation(k):
             train_cnnlstm.data.train_y =y_train_fold
             train_cnnlstm.data.validation_y = y_val_fold
             train_cnnlstm.train_model(3, iter)
-            train,test,acc=train_cnnlstm.test_model(False, "3_all_data_final_"+str(iter))
+            train,test,acc=train_cnnlstm.test_model(False, "3_all_data_inclined_cop_hip_"+str(iter))
 
             iter+=1
 
@@ -76,7 +76,7 @@ def k_fold_cross_validation(k):
 
 
  
-k_fold_cross_validation(5)
+# k_fold_cross_validation(5)
 print("done!")
 
 

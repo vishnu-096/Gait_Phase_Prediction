@@ -131,7 +131,11 @@ class DataLoader():
 
             self.path=path
             # file_name=['MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
-            file_name=['SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx','SD_2.xlsx','SD_1.xlsx', 'SD_3.xlsx', 'MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
+            # file_name=['SD_1_I.xlsx', 'SD_3_I.xlsx', 'SD_4_I.xlsx', 'SD_5_I.xlsx', 'SD_2_I.xlsx','SD_2.xlsx','SD_1.xlsx', 'SD_3.xlsx', 'MS_1.xlsx', 'SOE_1.xlsx','MS_1.xlsx','VP_3.xlsx' ,'SOE_1.xlsx','MS_1.xlsx','SOE_2.xlsx', 'PH_SPT3.xlsx','PH_SPT4.xlsx','VP_1.xlsx','VP_2.xlsx','PH_SPT2.xlsx', 'SOE_3.xlsx']
+            file_name=[]
+            inclined_files_1 = ['TH_2_I.xlsx', 'TH_3_I.xlsx','TH_4_I.xlsx']#, 'SKS_0_I.xlsx',  'SKS_2_I.xlsx',  'SKS_3_I.xlsx',  'SKS_4_I.xlsx', 'PK_3_I.xlsx', 'PK_5_2_I.xlsx', 'SKS_5_I.xlsx', 'PK_0_I.xlsx', 'PK_2_I.xlsx']
+            inclined_files = inclined_files_1 #+ ['JJ_4_I.xlsx', 'JJ_6_I.xlsx', 'JJ_7_I.xlsx', 'TH_2_I.xlsx', 'TH_3_I.xlsx','TH_4_I.xlsx']
+            file_name=file_name+inclined_files
             test_file='SOE_1fin3.xlsx'
             data_x,data_y= self.shuffle_multiple_datasets_based_on_gait_cycle( file_name, path, test_file)
             X_train, X_test,y_train, y_test = train_test_split(data_x, data_y ,
@@ -177,7 +181,7 @@ class DataLoader():
             source_table.info()
             source_table.describe().T
 
-            data_x = source_table.drop(["perc_new", "X", "Y","n_lgrf","n_rgrf","l_ph_ank","r_ph_ank"], axis = 1)
+            data_x = source_table.drop(["perc_new", "X", "Y","n_lgrf","n_rgrf","l_ph_ank","r_ph_ank","l_ph_hip","r_ph_hip"], axis = 1)
             target = source_table[["X", "Y"]]
             target_perc=source_table[["perc_new"]]
             data_x.info()

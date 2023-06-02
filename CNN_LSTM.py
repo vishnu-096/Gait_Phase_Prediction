@@ -56,8 +56,8 @@ def step_decay(epoch):
 	initial_lrate = 0.01
 	drop = 0.005
 	epochs_drop = 30
-	lrate=initial_lrate - epoch*0.002 
-	# lrate = initial_lrate * math.pow(drop, math.floor((1+epoch)/epochs_drop))
+	# lrate=initial_lrate - epoch*0.002 
+	lrate = initial_lrate * math.pow(drop, math.floor((1+epoch)/epochs_drop))
 	return lrate
 
 #loss 
@@ -276,17 +276,25 @@ class model:
 
         error_thresh_list=[1, 2, 3, 4, 5]
         accuracy_res=[]
+        rmse_perc_flag=False
+        sq_diff=0.0
+        num_of_samples=0
         for err_thresh in error_thresh_list:
             correct=0
             for iter in range(len(actual)):
                 if actual[iter]<2 or actual[iter]>98:
                     correct+=1
                     continue
+                if not rmse_perc_flag:
+                    sq_diff += (pred[iter]-actual[iter]) ** 2
+
                 if (abs(actual[iter] - pred[iter]) <= err_thresh):
                             correct+=1
+            rmse_perc_flag = True
             print("Error Threshold ", err_thresh, "%   Precision: ", correct * 100/len(actual))
             accuracy_res.append(correct * 100/len(actual))
-
+        rmse_perc = math.sqrt((sq_diff/len(pred)))
+        print(" Root mean square Percentage error is :",rmse_perc)
         # fig=plt.figure(figsize=(35,15))
 
         # # plt.plot(actual2[:],'-',label='Actual', linewidth = 3)
