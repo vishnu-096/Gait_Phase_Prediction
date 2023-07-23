@@ -75,6 +75,40 @@ class MyHuberLoss(Loss):
         big_error_loss = self.threshold * (tf.abs(error) - self.threshold / 2)
         return tf.where(is_small_error, small_error_loss, big_error_loss)
 
+from keras import Model
+from keras.layers import Layer
+import keras.backend as K
+from keras.layers import Input, Dense, SimpleRNN
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.metrics import mean_squared_error
+
+class attention(Layer):
+    def __init__(self,**kwargs):
+        super(attention,self).__init__(**kwargs)
+
+    def build(self,input_shape):
+        self.W=self.add_weight(name='attention_weight', shape=(input_shape[-1],1),
+                               initializer='random_normal', trainable=True)
+        self.b=self.add_weight(name='attention_bias', shape=(input_shape[1],1),
+                               initializer='zeros', trainable=True)
+        super(attention, self).build(input_shape)
+
+    def call(self,x):
+        # Alignment scores. Pass them through tanh function
+        print(x.shape)
+        e = K.tanh(K.dot(x,self.W)+self.b)
+        # Remove dimension of size 1
+        e = K.squeeze(e, axis=-1)
+        # Compute the weights
+        alpha = K.softmax(e)
+        # Reshape to tensorFlow format
+        alpha = K.expand_dims(alpha, axis=-1)
+        # Compute the context vector
+        context = x * alpha
+        context = K.sum(context, axis=1)
+        return context
+
 class model:
     def __init__(self, model_num=1) -> None:
         self.epochs=30
@@ -139,7 +173,7 @@ class model:
 
         self.model_num=model_num
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-            initial_learning_rate=1e-2,
+            initial_learning_rate=1e-3,
             decay_steps =10000,
             decay_rate=0.1)
         optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
@@ -230,6 +264,33 @@ class model:
             model4.add(Dense(2))
             self.model=model4
 
+        if model_num == 5:
+            n_features=self.train_x.shape[2]
+            seq_len = self.train_y.shape[1]
+            x=Input(shape=(seq_len, train_x.shape[2]))
+
+
+            l1=tf.keras.layers.AveragePooling1D(
+                pool_size=2,
+                strides=1)(x)
+            att1 = attention()(x)
+            rep_layer = L.RepeatVector((seq_len))(att1);
+
+            l2=L.Dense(n_features)(x)
+            print(l1.shape)
+            print(l2.shape)
+
+            inp=tf.concat([l1,rep_layer,l2],1)
+            print(inp.shape)
+            inp = L.MaxPooling1D(pool_size=2,strides=1)(inp)
+
+            # RNN_layer = SimpleRNN(hidden_units, return_sequences=True, activation=activation)(x)
+            LSTM_layer2 = LSTM(32, return_sequences=True)(inp)
+            # attn_layer1 = attention()(LSTM_layer2)
+            tmp_layer = L.Flatten()(LSTM_layer2)
+            lin_layer1= L.Dense(32)(tmp_layer)
+            lin_layer2 = L.Dense(2)(lin_layer1)
+            model=Model(x,lin_layer2)
         print(self.model.summary())
         self.model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=[RootMeanSquaredError()])
         print("X shape",self.data.train_x.shape)

@@ -4,10 +4,10 @@ from sklearn.model_selection import KFold
 
 only_inclined =True
 
-train_cnnlstm=model(4)
+train_cnnlstm=model(5)
 train_cnnlstm.pop_data(True)
 # train_cnnlstm.load_dataset()
-train_cnnlstm.train_model(3)
+train_cnnlstm.train_model(5)
 train_cnnlstm.test_model(False)
 
 # train_cnnlstm=model(4)s
