@@ -46,7 +46,10 @@ from tensorflow.keras.layers import *
 from tensorflow.keras import optimizers, Sequential, Model
 from tensorflow.keras.callbacks import LearningRateScheduler
 
-
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    for gpu in gpus:
+        tf.config.experimental.set_virtual_device_configuration(gpu,[tf.config.experimental.VirtualDeviceConfiguration(memory_limit=4096)])
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -86,7 +89,7 @@ def get_train_data_from_df(all_data, test_ratio):
 
     random.shuffle(cycle_list)
     source_table = pd.concat(cycle_list, axis=0, ignore_index=True)
-    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank","lhip_ang","rhip_ang","st_l"], axis = 1)
+    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank","l_ph_fo","r_ph_fo","st_l"], axis = 1)
     source_table
     x = source_table
     x = x.drop(['perc'], axis=1)
@@ -220,6 +223,16 @@ def encoder_model():
     part_1 = x[:, :, :n_features-2]
 
     part_2 = x[0, 0, n_features-2:]
+
+    part_3 = x[:, :, n_features-5:n_features-2]
+    # l2=tf.keras.layers.AveragePooling1D(
+    #     pool_size=2,
+    #     strides=1, padding="same")(part_3)
+    lin_l2=L.Dense(8)(part_3)
+    lin_l3=L.Dense(4)(lin_l2)
+
+    # LSTM_layer2 = LSTM(16, return_sequences=True)(lin_l2)
+
     print(part_2)
     l1=tf.keras.layers.AveragePooling1D(
         pool_size=2,
@@ -240,11 +253,13 @@ def encoder_model():
     LSTM_layer1 = LSTM(32, return_sequences=True)(rep_layer)
     # LSTM_layer2 = LSTM(8, return_sequences=True)(LSTM_layer1)
 
+    concat_layer=L.Concatenate(axis=2)([LSTM_layer1, lin_l3])
+
     # attn_layer1 = attention()(LSTM_layer2)
-    mean = L.Dense(3)(LSTM_layer1)
-    log_var= L.Dense(3)(LSTM_layer1)
+    mean = L.Dense(3)(concat_layer)
+    log_var= L.Dense(3)(concat_layer)
     z = Sampling()([mean, log_var, part_2])
-    latent_sp=L.TimeDistributed(L.Dense(3))(LSTM_layer1)
+    latent_sp=L.TimeDistributed(L.Dense(4))(concat_layer)
 
     encoder = tf.keras.Model(x, (mean, log_var, z, latent_sp), name="Encoder")
     return encoder      
@@ -256,7 +271,7 @@ def decoder_model():
 
     n_real_features = n_features -2
     input_1_shape=(10,3)
-    input_2_shape=( 10,3)
+    input_2_shape=( 10,4)
     # input_3_shape=( 10,3)
     input1 = tf.keras.Input(shape=input_1_shape, name='input_layer1')
     input2 = tf.keras.Input(shape=input_2_shape, name='input_layer2')
@@ -279,8 +294,8 @@ def decoder_model():
 
 
 seq_len=10
-n_features=10
-train_x=np.zeros((10,10,10))
+n_features=11
+train_x=np.zeros((10,10,11))
 encoder_model().summary()
 decoder_model().summary()
 
@@ -387,12 +402,17 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
         file.write("\n")
         prec_list.append(prec)
     rmse = 0
-    length = len(cor_actual)
-    for i in range(len(cor_actual)):
-
-        rmse = rmse + pow(cor_pred[i] - cor_actual[i], 2)
+    length = len(actual)
+    for i in range(len(actual)):
+        if abs (pred[i] - actual[i]) >= 90:
+            length -= 1
+        else:
+            rmse = rmse + pow(pred[i] - actual[i], 2)
     rmse = rmse / length
     rmse = math.sqrt(rmse)
+    print(rmse)
+    file.write("rmse "+str(rmse))
+    file.write("\n")
     if display_flag:
         plt.scatter(cor_actual, cor_pred, facecolors='none', edgecolors='crimson',alpha=0.4)
         p1 = max(max(cor_pred), max(cor_actual))
@@ -461,10 +481,12 @@ file_names = ['JL_I_0_new_.xlsx', 'JL_I_2_new_.xlsx','JL_I_3_new_.xlsx','JL_I_5_
              'SOE_I_0_new_.xlsx', 'SOE_I_2_new_.xlsx','SOE_I_3_new_.xlsx','SOE_I_5_new_.xlsx', 'SOE_I_4_new_.xlsx', 'SD_I_3_new_.xlsx', 'SD_I_4_new_.xlsx','SD_I_5_new_.xlsx',
              'SD_I_1_new_.xlsx','SD_I_2_new_.xlsx','TH_I_0_new_.xlsx', 'TH_I_2_new_.xlsx', 'TH_I_3_new_.xlsx','TH_I_4_new_.xlsx', 'TH_I_5_new_.xlsx'
              ,'PK_I_0_new_.xlsx', 'PK_I_2_new_.xlsx', 'PK_I_3_new_.xlsx','PK_I_5_new_.xlsx',
-              'SKS_0_I_new_.xlsx', 'SKS_2_I_new_.xlsx','SKS_3_I_new_.xlsx','SKS_4_I_new_.xlsx','SKS_5_I_new_.xlsx'
+              'SKS_0_I_new_.xlsx', 'SKS_2_I_new_.xlsx','SKS_3_I_new_.xlsx','SKS_4_I_new_.xlsx','SKS_5_I_new_.xlsx',
+            'PH_I_0_new_.xlsx',  'PH_I_2_new_.xlsx',  'PH_I_3_new_.xlsx',  'PH_I_4_new_.xlsx',  'PH_I_5_new_.xlsx'
               ]
-subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],'SOE':[0.90, 0.83],'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88]}
-subject_names = ['JS','VN', 'AK','JL', 'SD','SOE', 'PK','TH','SKS','VP']#,'VN','AK' 'SOE'
+subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],'SOE':[0.90, 0.83],
+                'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88], 'PH':[0.92,0.77]}
+subject_names = ['PH','SOE','AK','JL', 'SD','PK','TH','SKS','VP','JS','VN']#,'VN','AK' 'SOE'
 sub_comb_list=[]
 test_sub_list=[]
 acc_list=[]
@@ -476,7 +498,7 @@ test_rmse_list=[]
 path="/home/vtp/Gait_Phase_Prediction/Subject_data/new_files/"
 result_path = "/home/vtp/Gait_Phase_Prediction/Results/"
 
-pkl_file=path+"all_sub_new_normed_data_new.pkl"
+pkl_file=path+"all_sub_vae2_data_corr2_full.pkl"
 # pkl_file=path+"good_sub_data.pkl"
 
 for sub in subject_names:
@@ -505,22 +527,38 @@ else:
         print("Reading file :", file_name)
         tmp=pd.read_excel(path+ file_name, sheet_name='Sheet1')
         perc_column = tmp['perc']
-        tmp = tmp.drop(columns=['perc'])
-        scaler = MinMaxScaler()
+        st_sw_col = tmp['st_sw_phase']
+        sf_col = tmp['strike_frame']
+        lhip_col = tmp['lhip_ang']
+        rhip_col = tmp['rhip_ang']
+        st_l_col = tmp['st_l']
 
-        # Normalize each column separately
-        # normalized_data = scaler.fit_transform(tmp)
+        tmp = tmp.drop(columns=['perc', 'st_sw_phase', 'strike_frame', 'lhip_ang', 'rhip_ang', 'st_l'])
+        tmp['lhip_ang'] = lhip_col
+        tmp['rhip_ang'] = rhip_col
+        scaler = MinMaxScaler()
+        tmp['lhip_ang_n'] = scaler.fit_transform(tmp[['lhip_ang']])
+        tmp['rhip_ang_n'] = scaler.fit_transform( tmp[['rhip_ang']])
+
+        tmp['st_sw_phase'] = st_sw_col
+        tmp['strike_frame'] = sf_col
+        tmp['st_l'] = st_l_col
+
         column_names = tmp.columns
 
         tmp['l_ph_hip']=tmp['l_ph_hip']/300
         tmp['r_ph_hip']=tmp['r_ph_hip']/300
-        tmp['l_ph_fo']=tmp['l_ph_fo']/300
-        tmp['r_ph_fo']=tmp['r_ph_fo']/300
+        tmp['lhip_ang']=tmp['lhip_ang']/300
+        tmp['rhip_ang']=tmp['rhip_ang']/300
+
+        # tmp['l_ph_fo']=tmp['l_ph_fo']/300
+        # tmp['r_ph_fo']=tmp['r_ph_fo']/300
         tmp['lcop']= tmp['lcop']*1000
         tmp['rcop']=tmp['rcop']*1000
         tmp['strike_frame']=tmp['strike_frame']/300
         tmp['st_sw_phase']=tmp['st_sw_phase']/200
         normalized_df =tmp
+
         normalized_df['leg_len']=leg_len
         normalized_df['weight']=weight
         normalized_df['perc']= perc_column
@@ -529,7 +567,7 @@ else:
     with open(pkl_file,'wb') as pickle_file:
         pickle.dump(df_dict, pickle_file)
 
-with open(result_path+"all_results.txt","w") as file:  
+with open(result_path+"all_results_vae2.txt","w") as file:  
     for sub_iter,sub_comb in enumerate(sub_comb_list):
         print("Subject combination :",sub_comb)
         sub_tag=test_sub_list[sub_iter]
@@ -573,5 +611,5 @@ with open(result_path+"all_results.txt","w") as file:
         # file.write(acc)
         file.write("\n")
         # if sub_iter>=5:
-            # break
+        break
     file.close()

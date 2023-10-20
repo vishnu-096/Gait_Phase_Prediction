@@ -86,7 +86,7 @@ def get_train_data_from_df(all_data, test_ratio):
 
     random.shuffle(cycle_list)
     source_table = pd.concat(cycle_list, axis=0, ignore_index=True)
-    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank","lhip_ang","rhip_ang","st_l"], axis = 1)
+    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank",'l_ph_fo','r_ph_fo',], axis = 1)
     source_table
     x = source_table
     x = x.drop(['perc'], axis=1)
@@ -344,12 +344,9 @@ def train_vae(train_x):
     return vae.encoder,vae.decoder
 
 
-def test_model_get_results(encoder, mlp_model, validation_x, validation_y, display_flag, tag, file):
-    print("validation_x shape",validation_x.shape)
-    _,_,samp_v, ls_v=encoder.predict(validation_x)
-    ls_v = tf.concat((samp_v, ls_v), axis=2)
-    print('Encoded time-series shape', ls_v.shape)
-    testPredict = mlp_model.predict(ls_v)
+def test_model_get_results(model, validation_x, validation_y, display_flag, tag, file):
+
+    testPredict = model.predict(validation_x)
     print(validation_y.shape)
     print(testPredict.shape)
     testScore = np.sqrt(mean_squared_error(validation_y, testPredict))
@@ -387,12 +384,17 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
         file.write("\n")
         prec_list.append(prec)
     rmse = 0
-    length = len(cor_actual)
-    for i in range(len(cor_actual)):
-
-        rmse = rmse + pow(cor_pred[i] - cor_actual[i], 2)
+    length = len(actual)
+    for i in range(len(actual)):
+        if abs (pred[i] - actual[i]) >= 90:
+            length -= 1
+        else:
+            rmse = rmse + pow(pred[i] - actual[i], 2)
     rmse = rmse / length
     rmse = math.sqrt(rmse)
+    print(rmse)
+    file.write("rmse "+str(rmse))
+    file.write("\n")
     if display_flag:
         plt.scatter(cor_actual, cor_pred, facecolors='none', edgecolors='crimson',alpha=0.4)
         p1 = max(max(cor_pred), max(cor_actual))
@@ -402,47 +404,69 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
 
         plt.plot([p1, p2], [p1, p2], 'b-', linewidth =3)
         plt.title('Actual vs Prediction')
-        plt.savefig(result_path+tag+"res.png")
+        plt.savefig(result_path+tag+"res_cnnlstm2.png")
 
     return prec_list, rmse
 
 
-def train_mlp_model(samp_t, train_y):
-    mlp_model = Sequential()
+def train_mlp_model(train_x, train_y):
+    lr = 0.001
+    epochs = 30
+    batch = 128
+    n_features=train_x.shape[2]
+    seq_len = train_x.shape[1]
+    x=Input(shape=(seq_len, train_x.shape[2]))
+    part_3 = x[:, :, n_features-6:n_features-2]
+    # l2=tf.keras.layers.AveragePooling1D(
+    #     pool_size=2,
+    #     strides=1, padding="same")(part_3)
+    lin_l2=L.Dense(4)(part_3)
+    att2 = attention()(lin_l2)
 
-    mlp_model.add(tf.keras.Input(shape=(samp_t.shape[1], samp_t.shape[2]), name='input_layer'))
-    mlp_model.add(LSTM(32))
+    params = x[:, 0, n_features-2:]
 
-    mlp_model.add(L.Dense(32, kernel_initializer='glorot_normal', activation='relu'))
-    # mlp_model.add(L.Dense(32, kernel_initializer='glorot_normal', activation='relu', input_dim=(samp_t.shape[1]*samp_t.shape[2])))
-    # mlp_model.add(L.Dense(32, kernel_initializer='glorot_normal', activation='relu', input_dim=(train_encoded.shape[1])))
+    l1=tf.keras.layers.AveragePooling1D(
+        pool_size=2,
+        strides=None)(x)
 
-    mlp_model.add(L.Dense(8, kernel_initializer='glorot_normal', activation='relu'))
-    mlp_model.add(L.Dense(2))
-    mlp_model.summary()
+    att1 = attention()(x)
+    rep_layer = L.RepeatVector((seq_len))(att1)
 
-    initial_learning_rate = 0.001
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate,
-        decay_steps=100000,
-        decay_rate=0.96,
-        staircase=True)
-    adam = optimizers.Adam(lr_schedule)
+    l2=L.Dense(n_features)(x)
+    print(l1.shape)
+    print(l2.shape)
 
-    mlp_model.compile(loss='mse', optimizer=adam)
+    inp=tf.concat([l1,rep_layer,l2],1)
+    print(inp.shape)
+    # RNN_layer = SimpleRNN(hidden_units, return_sequences=True, activation=activation)(x)
+    LSTM_layer2 = LSTM(32)(inp)
+    # attn_layer1 = attention()(LSTM_layer2)
+    # tmp_layer = L.Flatten()(LSTM_layer2)
+    lin_layer1= L.Dense(16)(LSTM_layer2)
 
-    epochs = 25
-    batch=64                                                                                                                                                           
-    # lrate = LearningRateScheduler(step_decay)
+    concat_layer=L.Concatenate()([lin_layer1, att2, params])
+
+    lin_layer2 = L.Dense(2)(concat_layer)
+    # rep_layer = L.RepeatVector((10))(attn_layer1)
+    # attn_layer2 = attention()(rep_layer)
+    # LSTM_layer3 = LSTM(32, return_sequences=True)(rep_layer)
+    # LSTM_layer4 = LSTM(64, return_sequences=True)(LSTM_layer3)
+    # lin_layer = L.TimeDistributed(L.Dense(n_features))(LSTM_layer4)
+    # tmp_layer = Flatten()(rep_layer)
+    # lin_layer = L.Dense(2)(tmp_layer)
+    model=Model(x,lin_layer2)
+    model.summary()
+    adam = optimizers.Adam(lr)
+    model.compile(loss='mse', optimizer=adam)
+                                                                                                                                                         
     monitor = EarlyStopping(monitor='loss', min_delta=1e-5, patience=3)
-    # train_encoded_reshaped=np.reshape(train_encoded,(train_encoded.shape[0], train_encoded.shape[1]*train_encoded.shape[2]))
+    model_history = model.fit( train_x, train_y, epochs=epochs, batch_size=batch,  verbose=1)
 
-    # train_encoded_reshaped=np.reshape(train_encoded,(train_encoded.shape[0], train_encoded.shape[1]))
-    # train_encoded_reshaped = train_encoded
-    callback_list = [monitor]
-    mlp_history = mlp_model.fit(samp_t , train_y, callbacks=callback_list, epochs=epochs, batch_size=batch,  verbose=2)
-
-    return mlp_model
+    model_img_path="/home/vtp/Gait_Phase_Prediction/Results/cnn_lstm/model_img.png"
+    if not os.path.isfile(model_img_path):
+        tf.keras.utils.plot_model(model, to_file="/home/vtp/Gait_Phase_Prediction/Results/cnn_lstm/model_img.png", show_shapes=True, show_layer_names=False, show_dtype=False)
+        tf.keras.utils.plot_model(model, to_file="/home/vtp/Gait_Phase_Prediction/Results/cnn_lstm/model_img_noshape.png", show_shapes=False, show_layer_names=False, show_dtype=False)
+    return model
 
 def create_latent_space_train_mlp(encoder, train_x):
   print("OKAY till here 2")
@@ -461,10 +485,12 @@ file_names = ['JL_I_0_new_.xlsx', 'JL_I_2_new_.xlsx','JL_I_3_new_.xlsx','JL_I_5_
              'SOE_I_0_new_.xlsx', 'SOE_I_2_new_.xlsx','SOE_I_3_new_.xlsx','SOE_I_5_new_.xlsx', 'SOE_I_4_new_.xlsx', 'SD_I_3_new_.xlsx', 'SD_I_4_new_.xlsx','SD_I_5_new_.xlsx',
              'SD_I_1_new_.xlsx','SD_I_2_new_.xlsx','TH_I_0_new_.xlsx', 'TH_I_2_new_.xlsx', 'TH_I_3_new_.xlsx','TH_I_4_new_.xlsx', 'TH_I_5_new_.xlsx'
              ,'PK_I_0_new_.xlsx', 'PK_I_2_new_.xlsx', 'PK_I_3_new_.xlsx','PK_I_5_new_.xlsx',
-              'SKS_0_I_new_.xlsx', 'SKS_2_I_new_.xlsx','SKS_3_I_new_.xlsx','SKS_4_I_new_.xlsx','SKS_5_I_new_.xlsx'
+              'SKS_0_I_new_.xlsx', 'SKS_2_I_new_.xlsx','SKS_3_I_new_.xlsx','SKS_4_I_new_.xlsx','SKS_5_I_new_.xlsx',
+              'PH_I_0_new_.xlsx',  'PH_I_2_new_.xlsx',  'PH_I_3_new_.xlsx',  'PH_I_4_new_.xlsx',  'PH_I_5_new_.xlsx'
               ]
-subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],'SOE':[0.90, 0.83],'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88]}
-subject_names = ['JS','VN', 'AK','JL', 'SD','SOE', 'PK','TH','SKS','VP']#,'VN','AK' 'SOE'
+subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],
+                'SOE':[0.90, 0.83],'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88],'PH':[0.92, 0.77]}
+subject_names = ['TH','SKS','VP','JS','VN', 'AK','JL', 'SD','SOE', 'PK']#,'VN','AK' 'SOE'
 sub_comb_list=[]
 test_sub_list=[]
 acc_list=[]
@@ -474,9 +500,9 @@ test_rmse_list=[]
 
 
 path="/home/vtp/Gait_Phase_Prediction/Subject_data/new_files/"
-result_path = "/home/vtp/Gait_Phase_Prediction/Results/"
+result_path = "/home/vtp/Gait_Phase_Prediction/Results/cnn_lstm/"
 
-pkl_file=path+"all_sub_new_normed_data_new.pkl"
+pkl_file=path+"all_sub_data_cnnlstm3.pkl"
 # pkl_file=path+"good_sub_data.pkl"
 
 for sub in subject_names:
@@ -504,12 +530,31 @@ else:
         weight = subject_dict[subject][1]
         print("Reading file :", file_name)
         tmp=pd.read_excel(path+ file_name, sheet_name='Sheet1')
-        perc_column = tmp['perc']
-        tmp = tmp.drop(columns=['perc'])
-        scaler = MinMaxScaler()
+        # perc_column = tmp['perc']
+        # tmp = tmp.drop(columns=['perc'])
+        # scaler = MinMaxScaler()
 
-        # Normalize each column separately
+        # # Normalize each column separately
         # normalized_data = scaler.fit_transform(tmp)
+        # column_names = tmp.columns
+
+        # normalized_df = pd.DataFrame(normalized_data, columns=column_names)
+
+        # # normalized_df['leg_len']=leg_len
+        # # normalized_df['weight']=weight
+        # normalized_df['perc']= perc_column
+        perc_column = tmp['perc']
+        st_sw_col = tmp['st_sw_phase']
+        sf_col = tmp['strike_frame']
+        lhip_col = tmp['l_ph_ang']
+        st_l_col = tmp['st_l']
+
+        tmp = tmp.drop(columns=['perc', 'st_sw_phase', 'strike_frame', 'l_ph_hip', 'st_l'])
+        tmp['l_ph_ang'] = lhip_col
+        tmp['st_sw_phase'] = st_sw_col
+        tmp['strike_frame'] = sf_col
+        tmp['st_l'] = st_l_col
+
         column_names = tmp.columns
 
         tmp['l_ph_hip']=tmp['l_ph_hip']/300
@@ -521,15 +566,15 @@ else:
         tmp['strike_frame']=tmp['strike_frame']/300
         tmp['st_sw_phase']=tmp['st_sw_phase']/200
         normalized_df =tmp
+
         normalized_df['leg_len']=leg_len
         normalized_df['weight']=weight
         normalized_df['perc']= perc_column
-
         df_dict[subject] = normalized_df
     with open(pkl_file,'wb') as pickle_file:
         pickle.dump(df_dict, pickle_file)
 
-with open(result_path+"all_results.txt","w") as file:  
+with open(result_path+"all_results_cnnlstm4.txt","w") as file:  
     for sub_iter,sub_comb in enumerate(sub_comb_list):
         print("Subject combination :",sub_comb)
         sub_tag=test_sub_list[sub_iter]
@@ -546,17 +591,11 @@ with open(result_path+"all_results.txt","w") as file:
         print("SSS")
         seq_len = train_x.shape[1]
         n_features = train_x.shape[2]
-        encoder=[]
-        decoder=[]
-        mlp_model=[]
-        encoder,decoder = train_vae(train_x)
-        print("OKAY till here 1")
 
-        samp_t=create_latent_space_train_mlp(encoder, train_x)
-        mlp_model = train_mlp_model(samp_t, train_y)
+        mlp_model = train_mlp_model( train_x, train_y)
         file.write("Training Result :")
         file.write("\n")
-        acc, rmse=test_model_get_results(encoder,mlp_model, validation_x, validation_y, False, sub_tag, file)
+        acc, rmse=test_model_get_results(mlp_model, validation_x, validation_y, False, sub_tag, file)
         acc_list.append(acc)
         rmse_list.append(rmse)
         print("testing on :", test_sub_list[sub_iter])
@@ -566,7 +605,7 @@ with open(result_path+"all_results.txt","w") as file:
         # all_data=get_data_frames_from_files(path, file_names, subject_dict, [test_sub_list[sub_iter]])
         all_data = df_dict[test_sub_list[sub_iter]]
         test_x, test_y, validation_x, validation_y = get_train_data_from_df(all_data, 0.25)
-        acc, rmse=test_model_get_results(encoder,mlp_model, test_x, test_y, True, sub_tag, file)
+        acc, rmse=test_model_get_results(mlp_model, test_x, test_y, True, sub_tag, file)
         test_acc_list.append(acc)
         test_rmse_list.append(rmse)
         # break
