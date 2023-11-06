@@ -32,6 +32,8 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout, TimeDistributed, Conv1
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import *
 from keras.callbacks import EarlyStopping
+from tensorflow.python.keras.layers import einsum_dense
+from tensorflow.python.ops import special_math_ops
 import tensorflow as tf
 
 from sklearn.preprocessing import MinMaxScaler
@@ -89,7 +91,7 @@ def get_train_data_from_df(all_data, test_ratio):
 
     random.shuffle(cycle_list)
     source_table = pd.concat(cycle_list, axis=0, ignore_index=True)
-    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank","l_ph_fo","r_ph_fo","st_l"], axis = 1)
+    source_table = source_table.drop(["lgrf", "rgrf", "l_ph_ank", "r_ph_ank","lhip_ang","rhip_ang","l_ph_fo","r_ph_fo"], axis = 1)
     source_table
     x = source_table
     x = x.drop(['perc'], axis=1)
@@ -192,9 +194,50 @@ class attention(Layer):
         alpha = K.expand_dims(alpha, axis=-1)
         # Compute the context vector
         context = x * alpha
-        context = K.sum(context, axis=1)
+        # context = K.sum(context, axis=1)
         return context
+
+class multiAttentionHead(Layer):
+    def __init__(self, num_heads=10, k_dim=64, use_bias=False, **kwargs):
+        self.k_dim = self.q_dim = self.v_dim = k_dim
+        self.num_heads = num_heads
+        self.use_bias = use_bias
+        super(multiAttentionHead,self).__init__(**kwargs)
     
+    def build(self, input_shape):
+        self.f_dim = input_shape[-1]
+        #[B,token,feature_dim]*[feature_dim,num_heads,v_dim/q_dim/k_dim]->[B,token,num_heads,q_dim/k_dim/v_dim]
+        if self.use_bias:
+            self.query_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.q_dim], bias_axes='de')
+            self.key_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.k_dim], bias_axes='de')
+            self.value_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.v_dim], bias_axes='de')
+            #[B,token,num_heads,v_dim]*[num_heads,v_dim,feature_dim]->[B,token,feature_dim]
+            self.Wo = einsum_dense.EinsumDense('abcd,cde->abe', output_shape=[None, self.f_dim], bias_axes='e')
+        else:
+            self.query_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.q_dim])
+            self.key_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.k_dim])
+            self.value_dense = einsum_dense.EinsumDense('abc,cde->abde', output_shape=[None, self.num_heads, self.v_dim])
+            #[B,token,num_heads,v_dim]*[num_heads,v_dim,feature_dim]->[B,token,feature_dim]
+            self.Wo = einsum_dense.EinsumDense('abcd,cde->abe', output_shape=[None, self.f_dim])
+        super(multiAttentionHead, self).build(input_shape)
+    
+    def call(self, input_vec, attention_mask=None):
+        query = self.query_dense(input_vec)#[B,token,num_heads,q_dim]
+        key = self.key_dense(input_vec)#[B,token,num_heads,k_dim]
+        value = self.value_dense(input_vec)#[B,token,num_heads,v_dim]
+        #[B,token,num_heads,q_dim]*[B,token,num_heads,k_dim]->[B,num_heads,token,token]
+        scaleddotproduct =  special_math_ops.einsum('abcd,aecd->acbe', query, key)
+        scaleddotproduct = tf.math.divide(scaleddotproduct, float(math.sqrt(self.k_dim)))
+        if attention_mask:
+            scaleddotproduct = tf.where(attention_mask, scaleddotproduct, -1e9)
+        softmax = tf.nn.softmax(scaleddotproduct, axis=-1)
+        #[B,num_heads,token,token]*[B,token,num_heads,v_dim]->[B,token,num_heads,v_dim]
+        softmax_value = special_math_ops.einsum('acbe,aecd->abcd', softmax, value)
+        #[B,token,num_heads,v_dim]*[num_heads,v_dim,feature_dim]->[B,token,feature_dim]
+        final = self.Wo(softmax_value)
+        return final    
+
+
     
 class Sampling(L.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
@@ -224,25 +267,33 @@ def encoder_model():
 
     part_2 = x[0, 0, n_features-2:]
 
-    part_3 = x[:, :, n_features-5:n_features-2]
+    part_3 = x[:, :, n_features-6:n_features-2]
     # l2=tf.keras.layers.AveragePooling1D(
     #     pool_size=2,
     #     strides=1, padding="same")(part_3)
-    lin_l2=L.Dense(8)(part_3)
+    # lin_l2=L.Dense(8)(part_3)
+    lin_l2 = attention()(part_3)
     lin_l3=L.Dense(4)(lin_l2)
 
-    # LSTM_layer2 = LSTM(16, return_sequences=True)(lin_l2)
+    LSTM_layer2 = LSTM(8, return_sequences=True)(lin_l2)
 
     print(part_2)
-    l1=tf.keras.layers.AveragePooling1D(
-        pool_size=2,
-        strides=1, padding="same")(part_1)
-    lin_l1=L.Dense(4)(l1)
+    l1=tf.keras.layers.Conv1D(16, 2, padding="same")(part_1)
 
-    att1 = attention()(part_1)
+    # l1=tf.keras.layers.AveragePooling1D(
+    #     pool_size=2,
+    #     strides=1, padding="same")(part_1)
+    # lin_l1=L.Dense(4)(l1)
+    # att_multi =multiAttentionHead(num_heads=4,k_dim=2,use_bias=True)
+    
+    # att_op = att_multi(l1)
+    att_op=attention()(l1)
+    # att1 = attention()(part_1)
+    # layer_normed = L.LayerNormalization(axis=-1)(att_op)
+
     # tmp_inp=L.Concatenate()([att1, part_2])
 
-    rep_layer = L.RepeatVector((seq_len))(att1);
+    # rep_layer = L.RepeatVector((seq_len))(att1);
     # tmp_inp=L.Concatenate()([att1, part_2])
 
     # latent_sp=L.TimeDistributed(Dense(4))(rep_layer)
@@ -250,10 +301,11 @@ def encoder_model():
     # print(l1.shape)
     # lstm_inp=L.Concatenate(axis=2)([lin_l1, rep_layer, part_2])
     # RNN_layer = SimpleRNN(hidden_units, return_sequences=True, activation=activation)(x)
-    LSTM_layer1 = LSTM(32, return_sequences=True)(rep_layer)
+    LSTM_layer1 = LSTM(32, return_sequences=True)(att_op)
     # LSTM_layer2 = LSTM(8, return_sequences=True)(LSTM_layer1)
 
     concat_layer=L.Concatenate(axis=2)([LSTM_layer1, lin_l3])
+    # layer_normed = L.LayerNormalization(axis=-1)(LSTM_layer2)
 
     # attn_layer1 = attention()(LSTM_layer2)
     mean = L.Dense(3)(concat_layer)
@@ -262,7 +314,53 @@ def encoder_model():
     latent_sp=L.TimeDistributed(L.Dense(4))(concat_layer)
 
     encoder = tf.keras.Model(x, (mean, log_var, z, latent_sp), name="Encoder")
-    return encoder      
+    return encoder  
+    # seq_len=10
+    # n_features=train_x.shape[2]
+    # x=Input(shape=(seq_len, n_features))
+    # part_1 = x[:, :, :n_features-2]
+
+    # part_2 = x[0, 0, n_features-2:]
+
+    # part_3 = x[:, :, n_features-5:n_features-2]
+    # # l2=tf.keras.layers.AveragePooling1D(
+    # #     pool_size=2,
+    # #     strides=1, padding="same")(part_3)
+    # lin_l2=L.Dense(8)(part_3)
+    # lin_l3=L.Dense(4)(lin_l2)
+
+    # # LSTM_layer2 = LSTM(16, return_sequences=True)(lin_l2)
+
+    # print(part_2)
+    # l1=tf.keras.layers.AveragePooling1D(
+    #     pool_size=2,
+    #     strides=1, padding="same")(part_1)
+    # lin_l1=L.Dense(4)(l1)
+
+    # att1 = attention()(part_1)
+    # # tmp_inp=L.Concatenate()([att1, part_2])
+
+    # rep_layer = L.RepeatVector((seq_len))(att1);
+    # # tmp_inp=L.Concatenate()([att1, part_2])
+
+    # # latent_sp=L.TimeDistributed(Dense(4))(rep_layer)
+    # # f1=tf.keras.layers.Flatten()(l1)
+    # # print(l1.shape)
+    # # lstm_inp=L.Concatenate(axis=2)([lin_l1, rep_layer, part_2])
+    # # RNN_layer = SimpleRNN(hidden_units, return_sequences=True, activation=activation)(x)
+    # LSTM_layer1 = LSTM(32, return_sequences=True)(rep_layer)
+    # # LSTM_layer2 = LSTM(8, return_sequences=True)(LSTM_layer1)
+
+    # concat_layer=L.Concatenate(axis=2)([LSTM_layer1, lin_l3])
+
+    # # attn_layer1 = attention()(LSTM_layer2)
+    # mean = L.Dense(3)(concat_layer)
+    # log_var= L.Dense(3)(concat_layer)
+    # z = Sampling()([mean, log_var, part_2])
+    # latent_sp=L.TimeDistributed(L.Dense(4))(concat_layer)
+
+    # encoder = tf.keras.Model(x, (mean, log_var, z, latent_sp), name="Encoder")
+    # return encoder      
 
 def decoder_model():
         
@@ -354,7 +452,7 @@ def train_vae(train_x):
     dec=decoder_model()
     vae = VAE(enc, dec)
     vae.compile(optimizer=keras.optimizers.Adam())
-    vae.fit(train_x, epochs=20, batch_size=128, verbose=2)
+    vae.fit(train_x, epochs=22, batch_size=128, verbose=2)
 
     return vae.encoder,vae.decoder
 
@@ -386,12 +484,13 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
     cor_actual=[]
     cor_pred=[]
     prec_list=[]
+
     for i in range(5):
         correct = 0
         for iter in range(len(actual)):
-            if (actual[iter]>98) or(actual[iter]<3):
-                correct+=1
-                continue
+            # if (actual[iter]>98) or(actual[iter]<3):
+            #     correct+=1
+            #     continue
             if (abs(actual[iter] - pred[iter]) <= (i+1)):
                 correct+=1
             cor_pred.append(pred[iter])
@@ -401,10 +500,11 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
         file.write(str(prec))
         file.write("\n")
         prec_list.append(prec)
+
     rmse = 0
     length = len(actual)
     for i in range(len(actual)):
-        if abs (pred[i] - actual[i]) >= 90:
+        if abs (pred[i] - actual[i]) >=90:
             length -= 1
         else:
             rmse = rmse + pow(pred[i] - actual[i], 2)
@@ -422,7 +522,7 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
 
         plt.plot([p1, p2], [p1, p2], 'b-', linewidth =3)
         plt.title('Actual vs Prediction')
-        plt.savefig(result_path+tag+"res.png")
+        plt.savefig(result_path+tag+"__res.png")
 
     return prec_list, rmse
 
@@ -482,11 +582,12 @@ file_names = ['JL_I_0_new_.xlsx', 'JL_I_2_new_.xlsx','JL_I_3_new_.xlsx','JL_I_5_
              'SD_I_1_new_.xlsx','SD_I_2_new_.xlsx','TH_I_0_new_.xlsx', 'TH_I_2_new_.xlsx', 'TH_I_3_new_.xlsx','TH_I_4_new_.xlsx', 'TH_I_5_new_.xlsx'
              ,'PK_I_0_new_.xlsx', 'PK_I_2_new_.xlsx', 'PK_I_3_new_.xlsx','PK_I_5_new_.xlsx',
               'SKS_0_I_new_.xlsx', 'SKS_2_I_new_.xlsx','SKS_3_I_new_.xlsx','SKS_4_I_new_.xlsx','SKS_5_I_new_.xlsx',
-            'PH_I_0_new_.xlsx',  'PH_I_2_new_.xlsx',  'PH_I_3_new_.xlsx',  'PH_I_4_new_.xlsx',  'PH_I_5_new_.xlsx'
+            'PH_I_0_new_.xlsx',  'PH_I_2_new_.xlsx',  'PH_I_3_new_.xlsx',  'PH_I_4_new_.xlsx',  'PH_I_5_new_.xlsx',
+            'YC_I_0_new_.xlsx',  'YC_I_2_new_.xlsx',  'YC_I_3_new_.xlsx',  'YC_I_4_new_.xlsx',  'YC_I_5_new_.xlsx'
               ]
 subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],'SOE':[0.90, 0.83],
-                'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88], 'PH':[0.92,0.77]}
-subject_names = ['PH','SOE','AK','JL', 'SD','PK','TH','SKS','VP','JS','VN']#,'VN','AK' 'SOE'
+                'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88], 'PH':[0.95,0.80], 'YC':[0.82,0.79]}
+subject_names = ['TH', 'YC','PH','SKS','VP','AK', 'SD','PH','JL','JS', 'PK', 'SOE']#,'VN','AK' 'SOE'
 sub_comb_list=[]
 test_sub_list=[]
 acc_list=[]
@@ -498,7 +599,7 @@ test_rmse_list=[]
 path="/home/vtp/Gait_Phase_Prediction/Subject_data/new_files/"
 result_path = "/home/vtp/Gait_Phase_Prediction/Results/"
 
-pkl_file=path+"all_sub_vae2_data_corr2_full.pkl"
+pkl_file=path+"all_sub_vae2_data_corr_all_sub2.pkl"
 # pkl_file=path+"good_sub_data.pkl"
 
 for sub in subject_names:
@@ -531,25 +632,28 @@ else:
         sf_col = tmp['strike_frame']
         lhip_col = tmp['lhip_ang']
         rhip_col = tmp['rhip_ang']
-        st_l_col = tmp['st_l']
+        lhip_df=tmp[['lhip_ang']]
+        rhip_df=tmp[['rhip_ang']]
+        
+        st_l_col = tmp[['st_l']]
 
         tmp = tmp.drop(columns=['perc', 'st_sw_phase', 'strike_frame', 'lhip_ang', 'rhip_ang', 'st_l'])
+
+        scaler = MinMaxScaler()
+        tmp['lhip_ang_n'] = scaler.fit_transform(lhip_df)
+        tmp['rhip_ang_n'] = scaler.fit_transform(rhip_df)
         tmp['lhip_ang'] = lhip_col
         tmp['rhip_ang'] = rhip_col
-        scaler = MinMaxScaler()
-        tmp['lhip_ang_n'] = scaler.fit_transform(tmp[['lhip_ang']])
-        tmp['rhip_ang_n'] = scaler.fit_transform( tmp[['rhip_ang']])
-
         tmp['st_sw_phase'] = st_sw_col
         tmp['strike_frame'] = sf_col
-        tmp['st_l'] = st_l_col
+        tmp['st_l'] = scaler.fit_transform( st_l_col)
 
         column_names = tmp.columns
 
         tmp['l_ph_hip']=tmp['l_ph_hip']/300
         tmp['r_ph_hip']=tmp['r_ph_hip']/300
-        tmp['lhip_ang']=tmp['lhip_ang']/300
-        tmp['rhip_ang']=tmp['rhip_ang']/300
+        tmp['lhip_ang']=tmp['lhip_ang']/60
+        tmp['rhip_ang']=tmp['rhip_ang']/60
 
         # tmp['l_ph_fo']=tmp['l_ph_fo']/300
         # tmp['r_ph_fo']=tmp['r_ph_fo']/300
@@ -611,5 +715,5 @@ with open(result_path+"all_results_vae2.txt","w") as file:
         # file.write(acc)
         file.write("\n")
         # if sub_iter>=5:
-        break
+        # break
     file.close()
