@@ -480,7 +480,15 @@ def test_model_get_results(encoder, mlp_model, validation_x, validation_y, displ
     for iter in range(len(validation_y)):
         x =validation_y[iter][0]
         y =validation_y[iter][1]
+        # st_frame = validation_x[0,9,7]
+
         actual[iter] = ((math.atan2(y,x) + 2*math.pi) % (2*math.pi)) * (100 / (2*math.pi))
+        # if st_frame>100 and pred[iter]<15:
+        #     pred[iter]=100-pred[iter]
+        # if st_frame<90 and pred[iter]>85:
+        #     pred[iter]=100-pred[iter]
+
+
     cor_actual=[]
     cor_pred=[]
     prec_list=[]
@@ -587,7 +595,7 @@ file_names = ['JL_I_0_new_.xlsx', 'JL_I_2_new_.xlsx','JL_I_3_new_.xlsx','JL_I_5_
               ]
 subject_dict = {'VN':[0.90,0.63],'AK':[0.80,0.57],'JS':[0.89,0.64],'JL':[0.79,0.63],'SKS':[0.83, 0.58],'VP':[0.93, 0.77],'SOE':[0.90, 0.83],
                 'SD':[0.83, 0.70], 'TH':[0.66, 0.52], 'PK':[0.90, 0.88], 'PH':[0.95,0.80], 'YC':[0.82,0.79]}
-subject_names = ['TH', 'YC','PH','SKS','VP','AK', 'SD','PH','JL','JS', 'PK', 'SOE']#,'VN','AK' 'SOE'
+subject_names = ['YC', 'TH','PH','SKS','VP','AK', 'SD','PH','JL','JS', 'PK', 'SOE']#,'VN','AK' 'SOE'
 sub_comb_list=[]
 test_sub_list=[]
 acc_list=[]
