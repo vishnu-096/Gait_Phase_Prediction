@@ -21,19 +21,17 @@ from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import f_regression
 from sklearn import metrics
 
+#from keras.layers import *
+from keras.callbacks import ModelCheckpoint
+from keras.losses import MeanSquaredError
+from keras.metrics import RootMeanSquaredError
+from keras.optimizers import Adam
+from keras.layers import LSTM, Dense, Dropout, TimeDistributed, Conv1D, MaxPooling1D, Flatten, Bidirectional, Input, Flatten, Activation, Reshape, RepeatVector, Concatenate
+from keras import Sequential
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import *
-from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.losses import MeanSquaredError
-from tensorflow.keras.metrics import RootMeanSquaredError
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.layers import LSTM, Dense, Dropout, TimeDistributed, Conv1D, MaxPooling1D, Flatten, Bidirectional, Input, Flatten, Activation, Reshape, RepeatVector, Concatenate
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import *
 from keras.callbacks import EarlyStopping
-from tensorflow.python.keras.layers import einsum_dense
-from tensorflow.python.ops import special_math_ops
+#from keras.layers import einsum_dense
+#from keras.ops import special_math_ops
 import tensorflow as tf
 
 from sklearn.preprocessing import MinMaxScaler
@@ -43,10 +41,9 @@ import os, warnings, random
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-import tensorflow.keras.layers as L
-from tensorflow.keras.layers import *
-from tensorflow.keras import optimizers, Sequential, Model
-from tensorflow.keras.callbacks import LearningRateScheduler
+import keras.layers as L
+from keras import optimizers, Sequential, Model
+from keras.callbacks import LearningRateScheduler
 
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
