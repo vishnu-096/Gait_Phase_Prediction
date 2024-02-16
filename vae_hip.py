@@ -161,7 +161,7 @@ def get_data_frames_from_files(path, file_names, subject_dict, subjects):
 
 from keras import Model
 from keras.layers import Layer
-import keras.backend as K
+import tensorflow.python.keras.backend as K
 import keras
 from keras.layers import Input, Dense, SimpleRNN
 from sklearn.preprocessing import MinMaxScaler
