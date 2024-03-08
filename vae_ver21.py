@@ -1,4 +1,4 @@
-import numpy as np
+vimport numpy as np
 import pandas as pd
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -745,4 +745,6 @@ with open(result_path+"all_results_vae2.txt","w") as file:
         # if sub_iter>=5:
         # break
     file.close()
+
+
 
